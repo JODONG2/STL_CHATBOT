@@ -9,4 +9,5 @@ pypdf
 pymupdf
 tiktoken
 python-dotenv
-requests 
+requests
+beautifulsoup4 

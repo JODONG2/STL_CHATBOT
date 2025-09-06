@@ -1,20 +1,37 @@
 import streamlit as st
 import uuid
 from config import AZURE_OPENAI_CHAT_MODEL
-from agent_flow import get_legal_agent_graph
+from agent_flow import get_legal_agent_graph, get_settlement_agent_graph
 
-st.set_page_config(page_title="AI 법률 상담사", layout="wide")
-st.title("AI 법률 상담사 (Legal AI Consultant)")
+st.set_page_config(page_title="AI 법률 상담사 & 정산 전문가", layout="wide")
+st.title("AI 법률 상담사 & 정산 전문가")
 
 st.sidebar.header("설정")
 st.sidebar.write(f"사용 모델: {AZURE_OPENAI_CHAT_MODEL}")
 
+# 질문 유형 선택
+question_type = st.sidebar.selectbox(
+    "질문 유형 선택",
+    ["법률 상담", "정산 업무"],
+    help="질문의 유형을 선택하세요"
+)
+
 # 1. 에이전트 그래프 캐싱 (초기화 비용 절감)
 @st.cache_resource
-def load_agent():
+def load_legal_agent():
     return get_legal_agent_graph()
 
-graph = load_agent()
+@st.cache_resource
+def load_settlement_agent():
+    return get_settlement_agent_graph()
+
+# 선택된 유형에 따라 에이전트 로드
+if question_type == "법률 상담":
+    graph = load_legal_agent()
+    st.sidebar.success("법률 상담 모드")
+else:
+    graph = load_settlement_agent()
+    st.sidebar.success("정산 업무 모드")
 
 # 2. 세션 상태 초기화 (대화 기록, 참조 문서)
 if "messages" not in st.session_state:
@@ -30,12 +47,17 @@ for msg in st.session_state["messages"]:
         st.markdown(msg["content"])
         # AI 답변에 참조 문서가 있으면 expander로 표시
         if msg["role"] == "ai" and msg.get("refs"):
-            with st.expander("참조 법률 조항/출처 보기"):
+            with st.expander("참조 문서/출처 보기"):
                 for ref in msg["refs"]:
                     st.markdown(ref)
 
 # 4. 사용자 입력 받기
-if prompt := st.chat_input("법률 질문을 입력하세요 (예: 개인정보 유출시 책임은?)"):
+if question_type == "법률 상담":
+    placeholder_text = "법률 질문을 입력하세요 (예: 개인정보 유출시 책임은?)"
+else:
+    placeholder_text = "정산 관련 질문을 입력하세요 (예: 쿠폰 정산 절차는?)"
+
+if prompt := st.chat_input(placeholder_text):
     # 사용자 메시지 추가
     st.session_state["messages"].append({"role": "user", "content": prompt})
     with st.chat_message("user"):
@@ -43,7 +65,7 @@ if prompt := st.chat_input("법률 질문을 입력하세요 (예: 개인정보 
 
     # AI 답변 생성
     with st.chat_message("ai"):
-        with st.spinner("법률 정보 검색 및 답변 생성 중..."):
+        with st.spinner(f"{question_type} 정보 검색 및 답변 생성 중..."):
             # LangGraph agent 호출 (대화 기록 전달)
             # messages: [{"role": "user"|"ai", "content": ...}]
             input_state = {
@@ -60,7 +82,7 @@ if prompt := st.chat_input("법률 질문을 입력하세요 (예: 개인정보 
                 refs = ["[출처:" + r for r in refs]
             st.markdown(ai_msg)
             if refs:
-                with st.expander("참조 법률 조항/출처 보기"):
+                with st.expander("참조 문서/출처 보기"):
                     for ref in refs:
                         st.markdown(ref)
             # 대화 기록/참조 문서 세션에 저장
